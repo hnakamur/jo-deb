@@ -1,0 +1,3 @@
+version=3
+opts=filenamemangle=s/.+\/v?(\d\S*)\.tar\.gz/jo-$1\.tar\.gz/ \
+  https://github.com/jpmens/jo/tags .*/v?(\d\S*)\.tar\.gz

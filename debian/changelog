@@ -1,5 +1,12 @@
-jo (1.0) trusty; urgency=low
+jo (1.1-1) unstable; urgency=medium
 
-  * Initial packaging for jo
+  * New upstream release.
+  * d/control: bump Standards-Version.
 
- -- Ross Duggan <ross@duggan.ie>  Sat, 12 Mar 2016 18:30:00 +0100
+ -- Vincent Bernat <bernat@debian.org>  Mon, 18 Sep 2017 16:37:33 +0200
+
+jo (1.0-1) unstable; urgency=medium
+
+  * Initial packaging. Closes: #817048.
+
+ -- Vincent Bernat <bernat@debian.org>  Sun, 13 Mar 2016 20:33:02 +0100

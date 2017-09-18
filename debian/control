@@ -1,10 +1,26 @@
 Source: jo
-Section: devel
+Section: utils
 Priority: optional
-Maintainer: Jan-Piet Mens <jpmens@gmail.com>
-Build-Depends: debhelper (>= 8.0.0), dh-autoreconf, libtool, autoconf (>= 2.69), make
-Standards-Version: 3.9.3
+Maintainer: Vincent Bernat <bernat@debian.org>
+Build-Depends: debhelper (>= 9),
+               dh-autoreconf,
+               pandoc,
+Standards-Version: 4.0.0
+Homepage: https://github.com/jpmens/jo
+Vcs-Browser: https://anonscm.debian.org/gitweb/?p=collab-maint/jo.git
+Vcs-Git: https://anonscm.debian.org/git/collab-maint/jo.git
 
 Package: jo
 Architecture: any
-Description: A shell command to create JSON
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: command-line processor to output JSON from a shell
+ jo creates a JSON string on stdout from words given it as arguments
+ or read from stdin. It can generate both arrays and objects. Here is
+ a short example:
+ .
+ $ jo -p name=jo n=17 parser@0
+ {
+    "name": "jo",
+    "n": 17,
+    "parser": false
+ }
