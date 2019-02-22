@@ -1,0 +1,34 @@
+
+2016-03-11 1.0
+- NEW: read JSON element values from files (#22)
+- FIX: usage diagnostic
+- NEW: add support for OpenBSD pledge(2) (#21)
+
+2016-03-10 0.9
+- UPD: revert support for $JO_PRETTY et. al; it was a bad idea
+
+2016-03-10 0.8
+- UPD: new test suite
+- NEW: support for nested elements (#19)
+- NEW: if $JO_PRETTY is set, jo will always pretty-print
+- NEW: Define $JO_SPACER to any desired number of spaces or tabs for pretty-printing (#18)
+
+2016-03-09 0.7
+- NEW: strings "true"/"false" now default to booleans; avoid with -B (#17)
+- FIX: test.sh get quotes to prevent failures with pdksh (#16)
+- FIX: pretty-print Version if requested (#15)
+- FIX: Add cast to suppress warning when compiling with GCC 4.8.4 (#14)
+
+2016-03-08 0.6
+- FIX: make build work on CentOS 6 (#13)
+- NEW: JSONy version with -V
+
+2016-03-08 0.5
+- FIX: fileno error (#12)
+
+2016-03-08 0.4
+- NEW: Win32 support for CJK contributed by @mattn
+
+2016-03-08 0.3
+- NEW: autotools support
+- NEW: option -v
