@@ -1,3 +1,9 @@
+jo (1.2-1ppa1~ubuntu18.04.1) bionic; urgency=medium
+
+  * New upstream version 1.2
+
+ -- Hiroaki Nakamura <hnakamur@gmail.com>  Fri, 22 Feb 2019 13:59:31 +0900
+
 jo (1.1-1ppa1~ubuntu18.04.1) bionic; urgency=medium
 
   * Backport to Ubuntu 18.04 LTS 
