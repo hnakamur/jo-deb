@@ -35,7 +35,8 @@
 #define FLAG_PRETTY	0x02
 #define FLAG_NOBOOL	0x04
 #define FLAG_BOOLEAN	0x08
-#define FLAG_MASK	(FLAG_ARRAY | FLAG_PRETTY | FLAG_NOBOOL | FLAG_BOOLEAN)
+#define FLAG_NOSTDIN	0x10
+#define FLAG_MASK	(FLAG_ARRAY | FLAG_PRETTY | FLAG_NOBOOL | FLAG_BOOLEAN | FLAG_NOSTDIN)
 
 static JsonNode *pile;		/* pile of nested objects/arrays */
 
@@ -56,7 +57,7 @@ int tag_to_flags(JsonTag tag) {
 
 void json_copy_to_object(JsonNode * obj, JsonNode * object_or_array, int clobber)
 {
-	JsonNode *node;
+	JsonNode *node, *node_child, *obj_child;
 
 	if (obj->tag != JSON_OBJECT && obj->tag != JSON_ARRAY)
 		return;
@@ -73,7 +74,13 @@ void json_copy_to_object(JsonNode * obj, JsonNode * object_or_array, int clobber
 				json_append_member(obj, node->key, json_mkbool(node->bool_));
 			else if (node->tag == JSON_NULL)
 				json_append_member(obj, node->key, json_mknull());
-			else
+			else if (node->tag == JSON_OBJECT) {
+				/* Deep-copy existing object to new object */
+				json_append_member(obj, node->key, (obj_child = json_mkobject()));
+				json_foreach(node_child, node) {
+					json_copy_to_object(obj_child, node_child, clobber);
+				}
+			} else
 				fprintf(stderr, "PANIC: unhandled JSON type %d\n", node->tag);
 		} else if (obj->tag == JSON_ARRAY) {
 			if (node->tag == JSON_STRING)
@@ -296,11 +303,16 @@ JsonNode *boolnode(char *str)
 
 int usage(char *prog)
 {
-	fprintf(stderr, "Usage: %s [-a] [-B] [-p] [-v] [-V] [word...]\n", prog);
+	fprintf(stderr, "Usage: %s [-a] [-B] [-d keydelim] [-p] [-e] [-v] [-V] [--] [-s|-n|-b] [word...]\n", prog);
 	fprintf(stderr, "\tword is key=value or key@value\n");
 	fprintf(stderr, "\t-a creates an array of words\n");
 	fprintf(stderr, "\t-B disable boolean true/false\n");
+	fprintf(stderr, "\t-d key will be object path separated by keydelim\n");
 	fprintf(stderr, "\t-p pretty-prints JSON on output\n");
+	fprintf(stderr, "\t-e if stdin is empty do not wait for input quit\n");
+	fprintf(stderr, "\t-s coerce type guessing to string\n");
+	fprintf(stderr, "\t-b coerce type guessing to bool\n");
+	fprintf(stderr, "\t-n coerce type guessing to number\n");
 	fprintf(stderr, "\t-v show version\n");
 	fprintf(stderr, "\t-V show version in JSON\n");
 
@@ -311,34 +323,52 @@ int usage(char *prog)
  * Check whether we're being given nested arrays or objects.
  * `kv' contains the "key" such as "number" or "point[]" or
  * "geo[lat]". `value' the actual value for that element.
+ *
+ * Returns true if nesting is completely handled, otherwise:
+ *   *keyp   -> remaining key for caller to insert "value"
+ *   *baseop -> object node in which caller should insert "value"
  */
 
-bool nested(int flags, char *key, char *value)
+bool resolve_nested(int flags, char **keyp, char key_delim, char *value, JsonNode **baseop)
 {
-	char *member = NULL, *bo, *bc;		/* bracket open, close */
+	char *member = NULL, *bo, *bc, *so;		/* bracket open, close, sub-object */
 	JsonNode *op;
 	int found = false;
 
-	/* Check for geo[] or geo[lat] */
-	if ((bo = strchr(key, '[')) != NULL) {
+	if (key_delim) {
+		/* First construct nested object */
+		while ((so = strchr(*keyp, key_delim)) != NULL) {
+			*so = 0;
+			if ((op = json_find_member(*baseop, *keyp)) == NULL) {
+				/* Add a nested object node */
+				op = json_mkobject();
+				json_append_member(*baseop, *keyp, op);
+			}
+			*baseop = op;
+			*keyp = so + 1;
+		}
+	}
+
+	/* Now check for trailing geo[] or geo[lat] */
+	if ((bo = strchr(*keyp, '[')) != NULL) {
 		if (*(bo+1) == ']') {
 			*bo = 0;
 		} else if ((bc = strchr(bo + 1, ']')) == NULL) {
-			fprintf(stderr, "missing closing bracket on %s\n", key);
-			return (-1);
+			fprintf(stderr, "missing closing bracket on %s\n", *keyp);
+			return (false);
 		} else {
 			*bo = *bc = 0;
 			member = bo + 1;
 		}
 
 		/*
-		 * key is now `geo' for both `geo[]` and `geo[lat]`
+		 * *keyp is now `geo' for both `geo[]` and `geo[lat]`
 		 * member is null for the former and "lat" for the latter.
-		 * Find an existing object in the pile for this member name
+		 * Find an existing object in *baseop for this member name
 		 * or create a new one if we don't have it.
 		 */
 
-		if ((op = json_find_member(pile, key)) != NULL) {
+		if ((op = json_find_member(*baseop, *keyp)) != NULL) {
 			found = true;
 		} else {
 			op = (member == NULL) ? json_mkarray() : json_mkobject();
@@ -359,7 +389,7 @@ bool nested(int flags, char *key, char *value)
 		}
 
 		if (!found) {
-			json_append_member(pile, key, op);
+			json_append_member(*baseop, *keyp, op);
 		}
 
 		return (true);
@@ -367,7 +397,7 @@ bool nested(int flags, char *key, char *value)
 	return (false);
 }
 
-int member_to_object(JsonNode *object, int flags, char *kv)
+int member_to_object(JsonNode *object, int flags, char key_delim, char *kv)
 {
 	/* we expect key=value or key:value (boolean on last) */
 	char *p = strchr(kv, '=');
@@ -409,17 +439,15 @@ int member_to_object(JsonNode *object, int flags, char *kv)
 		if (p) {
 			*p = 0;
 
-			if (nested(flags, kv, p+1))
-				 return (0);
-			json_append_member(object, kv, vnode(p+1, flags));
+			if (!resolve_nested(flags, &kv, key_delim, p+1, &object))
+				json_append_member(object, kv, vnode(p+1, flags));
 		}
 	} else {
 		if (q) {
 			*q = 0;
 
-			if (nested(flags | FLAG_BOOLEAN, kv, q+1))
-				 return (0);
-			json_append_member(object, kv, boolnode(q+1));
+			if (!resolve_nested(flags | FLAG_BOOLEAN, &kv, key_delim, q+1, &object))
+				json_append_member(object, kv, boolnode(q+1));
 		}
 	}
 	return (0);
@@ -429,12 +457,12 @@ int member_to_object(JsonNode *object, int flags, char *kv)
  * Append kv to the array or object.
  */
 
-void append_kv(JsonNode *object_or_array, int flags, char *kv)
+void append_kv(JsonNode *object_or_array, int flags, char key_delim, char *kv)
 {
 	if (flags & FLAG_ARRAY) {
 		json_append_element(object_or_array, vnode(kv, flags));
 	} else {
-		if (member_to_object(object_or_array, flags, kv) == -1) {
+		if (member_to_object(object_or_array, flags, key_delim, kv) == -1) {
 			fprintf(stderr, "Argument `%s' is neither k=v nor k@v\n", kv);
 		}
 	}
@@ -540,7 +568,7 @@ int version(int flags)
 
 int main(int argc, char **argv)
 {
-	int c;
+	int c, key_delim = 0;
 	bool showversion = false;
 	char *kv, *js_string, *progname, buf[BUFSIZ], *p;
 	int ttyin = isatty(fileno(stdin)), ttyout = isatty(fileno(stdout));
@@ -555,7 +583,7 @@ int main(int argc, char **argv)
 
 	progname = (progname = strrchr(*argv, '/')) ? progname + 1 : *argv;
 
-	while ((c = getopt(argc, argv, "aBhpvV")) != EOF) {
+	while ((c = getopt(argc, argv, "aBd:hpevV")) != EOF) {
 		switch (c) {
 			case 'a':
 				flags |= FLAG_ARRAY;
@@ -563,11 +591,17 @@ int main(int argc, char **argv)
 			case 'B':
 				flags |= FLAG_NOBOOL;
 				break;
+			case 'd':
+				key_delim = optarg[0];
+				break;
 			case 'h':
 				usage(progname);
 				return (0);
 			case 'p':
 				flags |= FLAG_PRETTY;
+				break;
+			case 'e':
+				flags |= FLAG_NOSTDIN;
 				break;
 			case 'v':
 				printf("jo %s\n", PACKAGE_VERSION);
@@ -591,11 +625,14 @@ int main(int argc, char **argv)
 	json = (flags & FLAG_ARRAY) ? json_mkarray() : json_mkobject();
 
 	if (argc == 0) {
+		if (flags & FLAG_NOSTDIN) {
+			return(0);
+		}
 		while (fgets(buf, sizeof(buf), stdin) != NULL) {
 			if (buf[strlen(buf) - 1] == '\n')
 				buf[strlen(buf) - 1] = 0;
 			p = ttyin ? utf8_from_locale(buf, -1) : buf;
-			append_kv(json, flags, p);
+			append_kv(json, flags, key_delim, p);
 			if (ttyin) utf8_free(p);
 		}
 	} else {
@@ -617,7 +654,7 @@ int main(int argc, char **argv)
 				}
 			} else {
 				p = utf8_from_locale(kv, -1);
-				append_kv(json, flags, p);
+				append_kv(json, flags, key_delim, p);
 				utf8_free(p);
 				/* Reset any one-shot coerce flags */
 				flags &= FLAG_MASK;

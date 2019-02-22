@@ -6,7 +6,7 @@ jo - JSON output from a shell
 
 # SYNOPSIS
 
-jo [-p] [-a] [-B] [-v] [-V] [--] [ [-s|-n|-b] word ...]
+jo [-p] [-a] [-B] [-e] [-v] [-V] [-d keydelim] [--] [ [-s|-n|-b] word ...]
 
 # DESCRIPTION
 
@@ -14,6 +14,9 @@ jo [-p] [-a] [-B] [-v] [-V] [--] [ [-s|-n|-b] word ...]
 option `-a` it generates an object whereby each _word_ is a `key=value` (or `key@value`)
 pair with _key_ being the JSON object element and _value_ its value. *jo* attempts to
 guess the type of _value_ in order to create number (using _strtod(3)_), string, or null values in JSON.
+
+*jo* normally treats _key_ as a literal string value. If the `-d` option is specified, _key_ will be
+interpreted as an _object path_, whose individual components are separated by the first character of _keydelim_.
 
 *jo* treats `key@value` specifically as boolean JSON elements: if the value begins with `T`, `t`,
 or the numeric value is greater than zero, the result is `true`, else `false`. A missing or
@@ -115,6 +118,44 @@ Elements (objects and arrays) can be nested. The following example nests an arra
 	   }
 	}
 
+The same example, using object paths:
+
+	$ jo -p -d. name=Jane point[]=1 point[]=2 geo.lat=10 geo.lon=20
+	{
+	   "name": "Jane",
+	   "point": [
+	      1,
+	      2
+	   ],
+	   "geo": {
+	      "lat": 10,
+	      "lon": 20
+	   }
+	}
+
+Without `-d`, a different object is generated:
+
+	$ jo -p name=Jane point[]=1 point[]=2 geo.lat=10 geo.lon=20
+	{
+	   "name": "Jane",
+	   "point": [
+	      1,
+	      2
+	   ],
+	   "geo.lat": 10,
+	   "geo.lon": 20
+	}
+
+Create empty objects or arrays, intentionally or potentially:
+
+	$ jo < /dev/null
+	{}
+
+	$ MY_ARRAY=(a=1 b=2)
+	$ jo -a "${MY_ARRAY[@]}" < /dev/null
+	["a=1","b=2"]
+
+
 Type coercion:
 
 	$ jo -p -- -s a=true b=true -s c=123 d=123 -b e="1" -b f="true" -n g="This is a test" -b h="This is a test"
@@ -157,6 +198,10 @@ Read element values from a file in order to overcome ARG_MAX limits during objec
 -B
 :   By default *jo* interprets the strings "`true`" and "`false`" as boolean elements
     `true` and `false` respectively, and "`null`" as `null`. Disable with this option.
+
+-e
+:   Ignore empty stdin (i.e. don't produce a diagnostic error when *stdin*
+    is empty)
 
 -p
 :   Pretty-print the JSON string on output instead of the terse one-line output it
